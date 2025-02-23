@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 )
@@ -13,44 +12,54 @@ type Config struct {
     CurrentUserName   string `json:"current_user_name"`
 }
 
+func getConfigFilePath() (string, error) {
+    homeDir, err := os.UserHomeDir()
+    if err != nil {
+        return "", fmt.Errorf("Error getting home directory: %w", err)
+    }
+    filePath := filepath.Join(homeDir, ".gatorconfig.json")
+    return filePath, nil
+}
+
+func write(cfg Config) error {
+    fullPath, err := getConfigFilePath()
+    if err != nil {
+        return  fmt.Errorf("Error getting home directory: %w", err)
+    }
+    jsonData, err := json.Marshal(cfg)
+    if err != nil {
+        return fmt.Errorf("unable to turn struct into Json")
+    }
+    err = os.WriteFile(fullPath, jsonData, 0644)
+    if err != nil {
+        return fmt.Errorf("failed to write file")
+    }
+    return nil
+}
 
 func Read() (Config, error) {
-
-    homeDir, err := os.UserHomeDir()
+    fullPath, err := getConfigFilePath()
     if err != nil {
         return Config{}, fmt.Errorf("Error getting home directory: %w", err)
     }
-
-    filePath := filepath.Join(homeDir, ".gatorconfig.json")
-    f, err := os.Open(filePath)
+    file, err := os.ReadFile(fullPath)
     if err != nil {
         return Config{}, fmt.Errorf("Unable to open file: %w", err)
     }
-
-    defer f.Close()
-
-    data, err := io.ReadAll(f)
+    var jsonData Config
+    err = json.Unmarshal(file, &jsonData)
     if err != nil {
-        return Config{}, fmt.Errorf("Unable to read file into buffer: %w", err)
+        return Config{}, fmt.Errorf("Unable to decode data: %w", err)
     }
-
-    config := Config{}
-    err = json.Unmarshal(data, &config)
-    if err != nil {
-        return Config{}, fmt.Errorf("Unable to Unmarshal data into new Config struct: %w", err)
-    }
-
-    return config, nil
+    return jsonData, nil
 }
 
-//func (cfg *Config) error {
-//
-//}
-
-func (cfg *Config) SetUer(username string) error {
-
+func (cfg *Config) SetUser(username string) error {
     cfg.CurrentUserName = username
-    fmt.Println()
-
+    err := write(*cfg)
+    if err != nil {
+        return fmt.Errorf("Unable to write to file")
+    }
     return nil
 }
+
