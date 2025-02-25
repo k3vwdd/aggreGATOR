@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/k3vwdd/aggreGATOR/internal/config"
 	"github.com/k3vwdd/aggreGATOR/internal/database"
+	"github.com/k3vwdd/aggreGATOR/internal/rss"
 )
 
 type State struct {
@@ -100,6 +101,20 @@ func HandlerUsers(s *State, cmd Command) error {
             fmt.Printf("* %s\n", user.Name)
         }
     }
+    return nil
+}
+
+func HandlerAgg(s *State, cmd Command) error {
+    //if len(cmd.Args) == 0 {
+    //    return fmt.Errorf("agg requires a url arument to fetch")
+    //}
+    //urlToFetch := cmd.Args[0]
+    urlToFetch := "https://www.wagslane.dev/index.xml"
+    rssData, err := rss.FetchFeed(context.Background(), urlToFetch)
+    if err != nil {
+        return fmt.Errorf("Error trying to fetch url")
+    }
+    fmt.Println(rssData)
     return nil
 }
 

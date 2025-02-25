@@ -36,6 +36,7 @@ func main() {
     cmds.Register("register", Commands.HandlerRegister)
     cmds.Register("reset", Commands.HandlerReset)
     cmds.Register("users", Commands.HandlerUsers)
+    cmds.Register("agg", Commands.HandlerAgg)
 
     if len(os.Args) < 2 {
         fmt.Println("not enough args")
