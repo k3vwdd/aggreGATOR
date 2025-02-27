@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"time"
-
 	"github.com/google/uuid"
 	"github.com/k3vwdd/aggreGATOR/internal/config"
 	"github.com/k3vwdd/aggreGATOR/internal/database"
@@ -34,6 +33,16 @@ type Command struct {
 type Commands struct {
             // Command Name - the value
     Handlers map[string]func(*State, Command) error
+}
+
+func MiddlewareLoggedIn(handler func(s *State, cmd Command, user database.User) error) func(*State, Command) error {
+    return func(s *State, cmd Command) error {
+        user, err := s.Db.GetUser(context.Background(), s.Config.CurrentUserName)
+        if err != nil {
+            return fmt.Errorf("Unable to get user: %w", err)
+        }
+        return handler(s, cmd, user)
+    }
 }
 
 func HandlerLogin(s *State, cmd Command) error {
@@ -105,11 +114,11 @@ func HandlerUsers(s *State, cmd Command) error {
 }
 
 func HandlerAgg(s *State, cmd Command) error {
-    //if len(cmd.Args) == 0 {
-    //    return fmt.Errorf("agg requires a url arument to fetch")
-    //}
-    //urlToFetch := cmd.Args[0]
-    urlToFetch := "https://www.wagslane.dev/index.xml"
+    if len(cmd.Args) == 0 {
+        return fmt.Errorf("agg requires a url arument to fetch")
+    }
+    urlToFetch := cmd.Args[0]
+    //urlToFetch := "https://www.wagslane.dev/index.xml"
     rssData, err := rss.FetchFeed(context.Background(), urlToFetch)
     if err != nil {
         return fmt.Errorf("Error trying to fetch url")
@@ -118,10 +127,123 @@ func HandlerAgg(s *State, cmd Command) error {
     return nil
 }
 
+func HandlerAddFeed(s *State, cmd Command, user database.User) error {
+    if len(cmd.Args) == 0 {
+        return fmt.Errorf("addfeed commands needs an argument")
+    }
+
+    feedName := cmd.Args[0]
+    url := cmd.Args[1]
+
+    createFeed, err := s.Db.CreateFeed(context.Background(), database.CreateFeedParams{
+        Name: feedName,
+        ID: uuid.New(),
+        CreatedAt: time.Now(),
+        UpdatedAt: time.Now(),
+        Url: url,
+        UserID: user.ID,
+    })
+
+    if err != nil {
+        return fmt.Errorf("Error trying to createFeed in DB")
+    }
+
+    // After successfully creating the feed...
+    _, err = s.Db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+        UserID: user.ID,
+        FeedID: createFeed.ID,
+    })
+    if err != nil {
+        return fmt.Errorf("Error creating feed follow: %w", err)
+    }
+
+    fmt.Println("Feed created")
+    fmt.Println(createFeed.Name)
+    fmt.Println(createFeed.ID)
+    fmt.Println(createFeed.CreatedAt)
+    fmt.Println(createFeed.UpdatedAt)
+    fmt.Println(createFeed.Url)
+    fmt.Println(createFeed.UserID)
+
+    return nil
+}
+
+func HandlerListFeeds(s *State, cmd Command) error {
+    feeds, err := s.Db.GetFeeds(context.Background())
+    if err != nil {
+        return fmt.Errorf("Unable to get Feeds")
+    }
+    for _, val := range feeds {
+        fmt.Println(val.FeedsName)
+        fmt.Println(val.Url)
+        fmt.Println(val.UsersName)
+    }
+    return nil
+}
+
+func HandlerUnfollow(s *State, cmd Command, user database.User) error {
+    if len(cmd.Args) == 0 {
+        return fmt.Errorf("unfollow needs a url")
+    }
+
+     unfollow := s.Db.DeleteFeedFollow(context.Background(), database.DeleteFeedFollowParams{
+        UserID: user.ID,
+        Url: cmd.Args[0],
+    })
+
+    if unfollow != nil {
+        return fmt.Errorf("Unable to delete follow feed")
+    }
+
+    return nil
+}
+
+func HandlerFollow(s *State, cmd Command, user database.User) error {
+    if len(cmd.Args) == 0 {
+        return fmt.Errorf("follow needs a url")
+    }
+
+    url := cmd.Args[0]
+    feedUrl, err := s.Db.GetFeedByURL(context.Background(), url)
+    if err != nil {
+        return fmt.Errorf("Error trying to fetch feed url from db: => %w", err)
+    }
+
+    newFeedFollow, err := s.Db.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
+        UserID: user.ID,
+        FeedID: feedUrl.ID,
+    })
+
+    if err != nil {
+        return fmt.Errorf("Error %w",err)
+    }
+
+    for _, val := range newFeedFollow {
+        fmt.Println(val.FeedName)
+        fmt.Println(val.UserName)
+    }
+    return nil
+}
+
+func HandlerFollowing(s *State, cmd Command, user database.User) error {
+    feedsFollower, err := s.Db.GetFeedFollowsForUser(context.Background(), user.ID)
+    if err != nil {
+        return fmt.Errorf("Error trying to get feed follwers for user: %w", err)
+    }
+
+    for _, feed := range feedsFollower {
+        fmt.Printf("%s\n", feed.FeedName)
+    }
+
+    return nil
+}
+
+
 // This method registers a new handler function for a Command name.
 func (c *Commands) Register(name string, f func(*State, Command) error)  {
     c.Handlers[name] = f
 }
+
 
 // This method runs a given Command with the provided State if it exists.
 func (c *Commands) Run(s *State, cmd Command) error {

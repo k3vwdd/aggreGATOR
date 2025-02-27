@@ -52,6 +52,15 @@ func FetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
     }
 
     // clean un-escaped html
+    //    Outside the loop:
+    //        Unescapes and updates the channel's Title
+    //        Unescapes and updates the channel's Description
+    //    Inside the loop for each item:
+    //        Unescapes and updates THAT item's Title (Item[i].Title)
+    //        Unescapes and updates THAT item's Description (Item[i].Description)
+    //        Each field gets properly unescaped and saved back to its correct location.
+    //        The channel fields stay unchanged while each item's fields get updated.
+
     rssData.Channel.Title = html.UnescapeString(rssData.Channel.Title)
     rssData.Channel.Description = html.UnescapeString(rssData.Channel.Description)
     for i := range rssData.Channel.Item {
