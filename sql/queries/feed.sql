@@ -49,4 +49,14 @@ USING feeds
 WHERE feed_follows.feed_id = feeds.id  -- Match the joined row
   AND feed_follows.user_id = $1        -- The user's ID
   AND feeds.url = $2;                  -- The feed's URL
+-- name: MarkFeedFetched :exec
+UPDATE feeds
+SET last_fetched_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1;
+-- name: GetNextFeedToFetch :one
+SELECT *
+FROM feeds
+ORDER BY last_fetched_at NULLS FIRST, id
+LIMIT 1;
 

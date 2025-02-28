@@ -45,10 +45,10 @@ func FetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
         return &RSSFeed{}, fmt.Errorf("Error reading data")
     }
 
-    rssData := RSSFeed{}
+    var rssData RSSFeed
     err = xml.Unmarshal(data, &rssData)
     if err != nil {
-        return &RSSFeed{}, fmt.Errorf("Error decoding xml")
+        return &RSSFeed{}, fmt.Errorf("Error decoding xml: %w", err)
     }
 
     // clean un-escaped html
@@ -61,11 +61,18 @@ func FetchFeed(ctx context.Context, feedUrl string) (*RSSFeed, error) {
     //        Each field gets properly unescaped and saved back to its correct location.
     //        The channel fields stay unchanged while each item's fields get updated.
 
+    //rssData.Channel.Title = html.UnescapeString(rssData.Channel.Title)
+    //rssData.Channel.Description = html.UnescapeString(rssData.Channel.Description)
+    //for i := range rssData.Channel.Item {
+    //    rssData.Channel.Item[i].Title = html.UnescapeString(rssData.Channel.Item[i].Title)
+    //    rssData.Channel.Item[i].Description = html.UnescapeString(rssData.Channel.Item[i].Description)
+    //}
     rssData.Channel.Title = html.UnescapeString(rssData.Channel.Title)
     rssData.Channel.Description = html.UnescapeString(rssData.Channel.Description)
-    for i := range rssData.Channel.Item {
-        rssData.Channel.Item[i].Title = html.UnescapeString(rssData.Channel.Item[i].Title)
-        rssData.Channel.Item[i].Description = html.UnescapeString(rssData.Channel.Item[i].Description)
+    for i, item := range rssData.Channel.Item {
+        item.Title = html.UnescapeString(item.Title)
+        item.Description = html.UnescapeString(item.Description)
+        rssData.Channel.Item[i] = item
     }
 
     return &rssData, nil

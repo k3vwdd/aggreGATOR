@@ -3,8 +3,11 @@ package Commands
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
 	"time"
+    "strings"
 	"github.com/google/uuid"
 	"github.com/k3vwdd/aggreGATOR/internal/config"
 	"github.com/k3vwdd/aggreGATOR/internal/database"
@@ -114,16 +117,46 @@ func HandlerUsers(s *State, cmd Command) error {
 }
 
 func HandlerAgg(s *State, cmd Command) error {
-    if len(cmd.Args) == 0 {
-        return fmt.Errorf("agg requires a url arument to fetch")
+    if len(cmd.Args) < 1 || len(cmd.Args) > 2 {
+        return fmt.Errorf("usage: %v <time_between_reqs>", cmd.Name)
+
     }
-    urlToFetch := cmd.Args[0]
-    //urlToFetch := "https://www.wagslane.dev/index.xml"
-    rssData, err := rss.FetchFeed(context.Background(), urlToFetch)
+
+    timeBetweenRequest, err := time.ParseDuration(cmd.Args[0])
     if err != nil {
-        return fmt.Errorf("Error trying to fetch url")
+        return fmt.Errorf("Unable to parse string into a Duration: %w", err)
     }
-    fmt.Println(rssData)
+
+    ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+    defer stop()
+    ticker := time.NewTicker(timeBetweenRequest)
+    defer ticker.Stop()
+    for ctx.Err() == nil {
+        err := HandlerScrapeFeeds(s, cmd, database.User{})
+        if err != nil {
+            return fmt.Errorf("Unable to scrape Feed: %w", err)
+        }
+        //urlsToFetch, err := s.Db.GetFeeds(ctx)
+        //if err != nil {
+        //    return fmt.Errorf("Error GetFeeds(): %w", err)
+        //}
+        select {
+        case <- ticker.C:
+        case <- ctx.Done():
+            fmt.Println("Recieved Interrupt stop")
+            return nil
+
+        }
+        //for _, url := range urlsToFetch {
+        //    rssData, err := rss.FetchFeed(ctx, url.Url)
+        //    if err != nil {
+        //        fmt.Printf("Error fetching URL %s: %v\n", url.Url, err)
+        //        continue
+        //    }
+        //    fmt.Printf("fetching feed %s\n", url.Url)
+        //    fmt.Println(rssData)
+        //}
+    }
     return nil
 }
 
@@ -196,6 +229,60 @@ func HandlerUnfollow(s *State, cmd Command, user database.User) error {
     }
 
     return nil
+}
+
+func HandlerScrapeFeeds(s *State, cmd Command, user database.User) error {
+    nextFeed, err := s.Db.GetNextFeedToFetch(context.Background())
+    if err != nil {
+        return fmt.Errorf("Unable to getNextFeed: %w", err)
+    }
+    scrapeFeed(s.Db, nextFeed)
+
+    return nil
+}
+
+func scrapeFeed(db *database.Queries, feed database.Feed) {
+
+    err := db.MarkFeedFetched(context.Background(), feed.ID)
+    if err != nil {
+        fmt.Println("Unable to markFeedFetched")
+    }
+
+    rssData, err := rss.FetchFeed(context.Background(), feed.Url)
+    if err != nil {
+        log.Printf("Failed fetching feed at %s: %v", feed.Url, err)
+        return
+    }
+
+    const layout = time.RFC1123
+    for _, title := range rssData.Channel.Item {
+        description := title.Description
+        if description == "" {
+            description = "No description"
+        }
+        pubDate, err := time.Parse(layout, title.PubDate)
+        if err != nil {
+            log.Printf("Failed to parse publish date (%s), skipping post: %v", title.PubDate, err)
+            continue
+        }
+        _, err = db.CreatePost(context.Background(), database.CreatePostParams{
+            ID: uuid.New(),
+            CreatedAt: time.Now(),
+            UpdatedAt: time.Now(),
+            Title: title.Title,
+            Url: title.Link,
+            Description: title.Description,
+            PublishedAt: pubDate,
+            FeedID: feed.ID,
+        })
+        if err != nil {
+            if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+                log.Println("Duplicate post URL detected, skipping insertion.")
+                continue
+            }
+            log.Println("Error creating post:", err)
+        }
+    }
 }
 
 func HandlerFollow(s *State, cmd Command, user database.User) error {
