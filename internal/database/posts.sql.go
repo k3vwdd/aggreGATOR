@@ -76,7 +76,7 @@ LIMIT $2
 
 type GetPostsForUserParams struct {
 	UserID uuid.UUID
-	Limit  int32
+	Limit  int
 }
 
 func (q *Queries) GetPostsForUser(ctx context.Context, arg GetPostsForUserParams) ([]Post, error) {

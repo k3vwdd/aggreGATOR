@@ -43,6 +43,7 @@ func main() {
     cmds.Register("following", Commands.MiddlewareLoggedIn(Commands.HandlerFollowing))
     cmds.Register("unfollow", Commands.MiddlewareLoggedIn(Commands.HandlerUnfollow))
     cmds.Register("scrapefeeds", Commands.MiddlewareLoggedIn(Commands.HandlerScrapeFeeds))
+    cmds.Register("browse", Commands.MiddlewareLoggedIn(Commands.HandlerBrowse))
 
     if len(os.Args) < 2 {
         fmt.Println("not enough args")
